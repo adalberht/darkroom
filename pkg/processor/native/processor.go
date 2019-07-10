@@ -10,15 +10,10 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"image/jpeg"
-	"image/png"
 	"time"
 )
 
 const (
-	pngType = "png"
-	jpgType = "jpeg"
-
 	watermarkDurationKey = "watermarkDuration"
 	decodeDurationKey    = "decodeDuration"
 	encodeDurationKey    = "encodeDuration"
@@ -26,6 +21,7 @@ const (
 
 // BildProcessor uses bild library to process images using native Golang image.Image interface
 type BildProcessor struct {
+	encoders *Encoders
 }
 
 // Crop takes an input byte array, width, height and a CropPoint and returns the cropped image bytes or error
@@ -108,6 +104,7 @@ func (bp *BildProcessor) GrayScale(img image.Image) image.Image {
 	return src
 }
 
+// Decode takes an input of byte slice and returns the image, format (extension), and also the error
 func (bp *BildProcessor) Decode(data []byte) (image.Image, string, error) {
 	t := time.Now()
 	img, f, err := image.Decode(bytes.NewReader(data))
@@ -117,24 +114,26 @@ func (bp *BildProcessor) Decode(data []byte) (image.Image, string, error) {
 	return img, f, err
 }
 
-func (bp *BildProcessor) Encode(img image.Image, format string) ([]byte, error) {
+// Encode takes image and format (extension) and returns an encoded image in byte slices or error
+func (bp *BildProcessor) Encode(img image.Image, fmt string) ([]byte, error) {
 	t := time.Now()
-	if format == pngType && isOpaque(img) {
-		format = jpgType
-	}
-	buff := &bytes.Buffer{}
-	var err error
-	if format == pngType {
-		enc := png.Encoder{CompressionLevel: png.BestCompression}
-		err = enc.Encode(buff, img)
-	} else {
-		err = jpeg.Encode(buff, img, nil)
-	}
+	enc := bp.encoders.GetEncoder(img, fmt)
+	data, err := enc.Encode(img)
 	metrics.Update(metrics.UpdateOption{Name: encodeDurationKey, Type: metrics.Duration, Duration: time.Since(t)})
-	return buff.Bytes(), err
+	return data, err
 }
 
-// NewBildProcessor creates a new BildProcessor
+// NewBildProcessor creates a new BildProcessor with default compression
 func NewBildProcessor() *BildProcessor {
-	return &BildProcessor{}
+	return &BildProcessor{
+		encoders: NewEncoders(DefaultEncoderOptions),
+	}
+}
+
+// NewBildProcessorWithCompression takes an input of encoding options
+// 	and creates a newBildProcessor with custom compression options
+func NewBildProcessorWithCompression(opts *EncoderOptions) *BildProcessor {
+	return &BildProcessor{
+		encoders: NewEncoders(opts),
+	}
 }
